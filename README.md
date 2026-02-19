@@ -18,6 +18,7 @@ For Parquet export (optional):
 pip install pyarrow
 ```
 
+
 ## Quick Start
 
 ```python
@@ -332,6 +333,25 @@ Exports signals to a Parquet file (efficient columnar format). Requires `pyarrow
 ```python
 reader.export_parquet(["[60:0]", "[60:1]"], "output.parquet")
 ```
+
+---
+
+### Video
+
+#### `get_video_channels()`
+
+Returns a list of video (CaptureCam) channels found in the .dat file.
+
+```python
+channels = reader.get_video_channels()
+for ch in channels:
+    print(f"{ch['id']} = {ch['name']}")
+    print(f"  Frames: {ch['frame_count']:,}, Duration: {ch['duration_s']/3600:.1f}h, FPS: {ch['fps']:.0f}")
+```
+
+> **Note**: Programmatic video export is not supported by the ibaAnalyzer COM interface.
+> To export video, open the .dat file in ibaAnalyzer, drag the CaptureCam channel to a
+> view area, right-click the video, and select "Video exportieren".
 
 ---
 

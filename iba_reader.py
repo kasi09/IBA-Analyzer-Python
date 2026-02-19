@@ -470,6 +470,50 @@ class IbaReader:
         """
         return self._app.Evaluate(expression, xtype)
 
+    def get_video_channels(self):
+        """
+        Returns a list of video (CaptureCam) channels in the file.
+
+        Note: Programmatic video export is not supported. To export video,
+        open the .dat file in ibaAnalyzer, drag the CaptureCam channel to a
+        graph area, right-click the video view, and select "Video exportieren".
+
+        Returns:
+            List of dicts with 'id', 'name', 'group', 'frame_count',
+            'duration_s', 'fps'
+        """
+        all_signals = self.get_signal_list(FILTER_ANALOG)
+        video_channels = []
+
+        for sig in all_signals:
+            if 'CaptureCam' not in sig.get('group', ''):
+                continue
+            sig_id = sig['id']
+            if not sig_id.startswith('['):
+                sig_id = f"[{sig_id}]"
+
+            try:
+                tb, _, data = self.read_signal(sig_id)
+                frame_count = len(data)
+                duration_s = frame_count * tb
+                fps = 1.0 / tb if tb > 0 else 0
+                video_channels.append({
+                    'id': sig_id,
+                    'name': sig['name'],
+                    'group': sig['group'],
+                    'frame_count': frame_count,
+                    'duration_s': duration_s,
+                    'fps': fps,
+                })
+            except Exception:
+                video_channels.append({
+                    'id': sig_id,
+                    'name': sig['name'],
+                    'group': sig['group'],
+                })
+
+        return video_channels
+
 
 if __name__ == "__main__":
     import sys
