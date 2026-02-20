@@ -474,10 +474,6 @@ class IbaReader:
         """
         Returns a list of video (CaptureCam) channels in the file.
 
-        Note: Programmatic video export is not supported. To export video,
-        open the .dat file in ibaAnalyzer, drag the CaptureCam channel to a
-        graph area, right-click the video view, and select "Video exportieren".
-
         Returns:
             List of dicts with 'id', 'name', 'group', 'frame_count',
             'duration_s', 'fps'
@@ -513,6 +509,122 @@ class IbaReader:
                 })
 
         return video_channels
+
+    def export_video(self, output_path, channel_index=0):
+        """
+        Extracts embedded video from the .dat file to an MP4 file.
+
+        The video data (ibaCapture/CaptureCam) is stored as a valid MP4 stream
+        inside the PDA3 .dat file. This method locates and extracts it directly
+        — no ibaCapture server or ibaAnalyzer GUI needed.
+
+        Args:
+            output_path: Output file path (should end in .mp4)
+            channel_index: Which video channel to extract if multiple exist
+                           (default: 0 = first channel)
+
+        Returns:
+            dict with 'path', 'size', 'name' of the exported video
+
+        Raises:
+            RuntimeError: If no video data is found in the .dat file
+        """
+        import struct
+
+        fsize = os.path.getsize(self.filepath)
+
+        # Locate the MP4 ftyp atom preceded by "ibaCaptureCAM" marker
+        marker = b'ibaCaptureCAM'
+        ftyp_sig = b'ftyp'
+        chunk_size = 64 * 1024 * 1024
+        found_videos = []
+
+        with open(self.filepath, 'rb') as f:
+            offset = 0
+            while offset < fsize:
+                f.seek(offset)
+                chunk = f.read(chunk_size + 32)
+                if not chunk:
+                    break
+
+                search_pos = 0
+                while True:
+                    idx = chunk.find(ftyp_sig, search_pos)
+                    if idx == -1:
+                        break
+                    # Verify: 4 bytes before ftyp should be the atom size
+                    if idx >= 4:
+                        atom_size = struct.unpack('>I', chunk[idx-4:idx])[0]
+                        if 16 <= atom_size <= 64:
+                            abs_offset = offset + idx - 4
+                            # Extract embedded filename
+                            name = ''
+                            if idx >= 22:
+                                pre = chunk[idx-22:idx-4]
+                                cam_idx = pre.find(marker)
+                                if cam_idx != -1:
+                                    name = pre[cam_idx:].split(b'\x00')[0].decode('ascii', errors='replace')
+                            found_videos.append((abs_offset, name))
+                    search_pos = idx + 4
+
+                offset += chunk_size
+
+        if not found_videos:
+            raise RuntimeError("No embedded video (MP4) data found in this .dat file.")
+
+        if channel_index >= len(found_videos):
+            raise RuntimeError(
+                f"Video channel index {channel_index} out of range. "
+                f"Found {len(found_videos)} video(s): {[v[1] for v in found_videos]}"
+            )
+
+        video_start, video_name = found_videos[channel_index]
+
+        # Find the end of the MP4 data by scanning atoms (ftyp, mdat*, moov)
+        video_end = None
+        with open(self.filepath, 'rb') as f:
+            pos = video_start
+            while pos < fsize:
+                f.seek(pos)
+                hdr = f.read(16)
+                if len(hdr) < 8:
+                    break
+                size = struct.unpack('>I', hdr[0:4])[0]
+                tag = hdr[4:8]
+                if size == 1 and len(hdr) >= 16:
+                    size = struct.unpack('>Q', hdr[8:16])[0]
+                if size < 8:
+                    break
+                if tag == b'moov':
+                    video_end = pos + size
+                    break
+                if tag not in (b'ftyp', b'mdat', b'free', b'skip', b'wide'):
+                    break
+                pos += size
+
+        if video_end is None:
+            raise RuntimeError("Could not determine end of video data (no moov atom found).")
+
+        total = video_end - video_start
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+
+        with open(self.filepath, 'rb') as src:
+            src.seek(video_start)
+            with open(output_path, 'wb') as dst:
+                copied = 0
+                while copied < total:
+                    to_read = min(chunk_size, total - copied)
+                    data = src.read(to_read)
+                    if not data:
+                        break
+                    dst.write(data)
+                    copied += len(data)
+
+        return {
+            'path': output_path,
+            'size': total,
+            'name': video_name or f'video_{channel_index}',
+        }
 
 
 if __name__ == "__main__":
