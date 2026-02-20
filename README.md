@@ -349,9 +349,16 @@ for ch in channels:
     print(f"  Frames: {ch['frame_count']:,}, Duration: {ch['duration_s']/3600:.1f}h, FPS: {ch['fps']:.0f}")
 ```
 
-> **Note**: Programmatic video export is not supported by the ibaAnalyzer COM interface.
-> To export video, open the .dat file in ibaAnalyzer, drag the CaptureCam channel to a
-> view area, right-click the video, and select "Video exportieren".
+#### `export_video(output_path, channel_index=0)`
+
+Extracts embedded video (ibaCapture/CaptureCam) from the .dat file to an MP4 file.
+The video data is stored as a valid MP4 stream inside the PDA3 file and is extracted
+directly — no ibaCapture server or ibaAnalyzer GUI needed.
+
+```python
+result = reader.export_video("output.mp4")
+print(f"Exported: {result['name']} ({result['size'] / 1024**3:.1f} GB)")
+```
 
 ---
 
